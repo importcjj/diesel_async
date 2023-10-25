@@ -119,6 +119,13 @@ pub trait SimpleAsyncConnection {
     async fn batch_execute(&mut self, query: &str) -> QueryResult<()>;
 }
 
+
+#[derive(Debug)]
+pub struct ExecuteResult {
+    pub last_insert_id: Option<u64>,
+    pub rows_affected: usize,
+}
+
 /// An async connection to a database
 ///
 /// This trait represents a n async database connection. It can be used to query the database through
@@ -127,7 +134,7 @@ pub trait SimpleAsyncConnection {
 #[async_trait::async_trait]
 pub trait AsyncConnection: SimpleAsyncConnection + Sized + Send {
     /// The future returned by `AsyncConnection::execute`
-    type ExecuteFuture<'conn, 'query>: Future<Output = QueryResult<usize>> + Send;
+    type ExecuteFuture<'conn, 'query>: Future<Output = QueryResult<ExecuteResult>> + Send;
     /// The future returned by `AsyncConnection::load`
     type LoadFuture<'conn, 'query>: Future<Output = QueryResult<Self::Stream<'conn, 'query>>> + Send;
     /// The inner stream returned by `AsyncConnection::load`

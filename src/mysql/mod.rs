@@ -1,5 +1,5 @@
 use crate::stmt_cache::{PrepareCallback, StmtCache};
-use crate::{AnsiTransactionManager, AsyncConnection, SimpleAsyncConnection};
+use crate::{AnsiTransactionManager, AsyncConnection, SimpleAsyncConnection, ExecuteResult};
 use diesel::connection::statement_cache::{MaybeCached, StatementCacheKey};
 use diesel::mysql::{Mysql, MysqlQueryBuilder, MysqlType};
 use diesel::query_builder::QueryBuilder;
@@ -44,7 +44,7 @@ const CONNECTION_SETUP_QUERIES: &[&str] = &[
 
 #[async_trait::async_trait]
 impl AsyncConnection for AsyncMysqlConnection {
-    type ExecuteFuture<'conn, 'query> = BoxFuture<'conn, QueryResult<usize>>;
+    type ExecuteFuture<'conn, 'query> = BoxFuture<'conn, QueryResult<ExecuteResult>>;
     type LoadFuture<'conn, 'query> = BoxFuture<'conn, QueryResult<Self::Stream<'conn, 'query>>>;
     type Stream<'conn, 'query> = BoxStream<'conn, QueryResult<Self::Row<'conn, 'query>>>;
     type Row<'conn, 'query> = MysqlRow;
@@ -144,7 +144,11 @@ impl AsyncConnection for AsyncMysqlConnection {
             if let MaybeCached::CannotCache(stmt) = stmt {
                 conn.close(stmt).await.map_err(ErrorHelper)?;
             }
-            Ok(conn.affected_rows() as usize)
+            let er = ExecuteResult {
+                last_insert_id: conn.last_insert_id(),
+                rows_affected: conn.affected_rows() as usize,
+            };
+            Ok(er)
         })
     }
 

@@ -47,7 +47,8 @@ async fn transaction_test<C: AsyncConnection<Backend = TestBackend>>(
                 let res = diesel::insert_into(users::table)
                     .values(users::name.eq("Eve"))
                     .execute(conn)
-                    .await?;
+                    .await?
+                    .rows_affected;
 
                 assert_eq!(res, 1, "Insert in transaction returned wrong result");
                 let count = users::table.count().get_result::<i64>(conn).await?;
@@ -104,7 +105,7 @@ async fn test_basic_insert_and_load() -> QueryResult<()> {
         .values([users::name.eq("John Doe"), users::name.eq("Jane Doe")])
         .execute(conn)
         .await;
-    assert_eq!(res, Ok(2), "User count does not match");
+    assert_eq!(res.map(|r|r.rows_affected), Ok(2), "User count does not match");
     let users = users::table.load::<User>(conn).await?;
     assert_eq!(&users[0].name, "John Doe", "User name [0] does not match");
     assert_eq!(&users[1].name, "Jane Doe", "User name [1] does not match");

@@ -8,7 +8,7 @@ use self::error_helper::ErrorHelper;
 use self::row::PgRow;
 use self::serialize::ToSqlHelper;
 use crate::stmt_cache::{PrepareCallback, StmtCache};
-use crate::{AnsiTransactionManager, AsyncConnection, SimpleAsyncConnection};
+use crate::{AnsiTransactionManager, AsyncConnection, SimpleAsyncConnection, ExecuteResult};
 use diesel::connection::statement_cache::{PrepareForCache, StatementCacheKey};
 use diesel::pg::{
     FailedToLookupTypeError, Pg, PgMetadataCache, PgMetadataCacheKey, PgMetadataLookup,
@@ -114,7 +114,7 @@ impl SimpleAsyncConnection for AsyncPgConnection {
 #[async_trait::async_trait]
 impl AsyncConnection for AsyncPgConnection {
     type LoadFuture<'conn, 'query> = BoxFuture<'query, QueryResult<Self::Stream<'conn, 'query>>>;
-    type ExecuteFuture<'conn, 'query> = BoxFuture<'query, QueryResult<usize>>;
+    type ExecuteFuture<'conn, 'query> = BoxFuture<'query, QueryResult<ExecuteResult>>;
     type Stream<'conn, 'query> = BoxStream<'static, QueryResult<PgRow>>;
     type Row<'conn, 'query> = PgRow;
     type Backend = diesel::pg::Pg;
@@ -165,7 +165,13 @@ impl AsyncConnection for AsyncPgConnection {
             let res = tokio_postgres::Client::execute(&conn, &stmt, &binds as &[_])
                 .await
                 .map_err(ErrorHelper)?;
-            Ok(res as usize)
+
+            let er = ExecuteResult {
+                last_insert_id: None,
+                rows_affected: res as usize
+            };
+
+            Ok(er)
         })
         .boxed()
     }

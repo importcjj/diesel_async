@@ -156,7 +156,7 @@ mod implementation {
             T: diesel::query_builder::QueryFragment<Self::Backend> + diesel::query_builder::QueryId,
         {
             let f = self.inner.execute_returning_count(source);
-            self.runtime.block_on(f)
+            self.runtime.block_on(f).map(|r| r.rows_affected)
         }
 
     fn transaction_state(

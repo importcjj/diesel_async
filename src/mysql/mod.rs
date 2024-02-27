@@ -128,8 +128,11 @@ impl AsyncConnection for AsyncMysqlConnection {
             + diesel::query_builder::QueryId
             + 'query,
     {
+        println!("++execute_returning_count");
         self.with_prepared_statement(source, |conn, stmt, binds| async move {
+            println!("//with_prepared_statement inner");
             conn.exec_drop(&*stmt, binds).await.map_err(ErrorHelper)?;
+            println!("exec_drop finished");
             // We need to close any non-cached statement explicitly here as otherwise
             // we might error out on too many open statements. See https://github.com/weiznich/diesel_async/issues/26
             // for details
@@ -263,6 +266,7 @@ impl AsyncMysqlConnection {
                     conn,
                 )
                 .await?;
+            println!("with_prepared_statement");
             update_transaction_manager_status(
                 callback(conn, stmt, ToSqlHelper { metadata, binds }).await,
                 transaction_manager,
@@ -305,13 +309,46 @@ impl AsyncMysqlConnection {
     }
 }
 
+use crate::pooled_connection::RecyclingMethod;
+
 #[cfg(any(
     feature = "deadpool",
     feature = "bb8",
     feature = "mobc",
     feature = "r2d2"
 ))]
-impl crate::pooled_connection::PoolableConnection for AsyncMysqlConnection {}
+#[async_trait::async_trait]
+impl crate::pooled_connection::PoolableConnection for AsyncMysqlConnection {
+    /// Check if a connection is still valid
+    ///
+    /// The default implementation will perform a check based on the provided
+    /// recycling method variant
+    async fn ping(&mut self, config: &RecyclingMethod<Self>) -> diesel::QueryResult<()>
+    where
+        for<'a> Self: 'a,
+        diesel::dsl::BareSelect<diesel::dsl::AsExprOf<i32, diesel::sql_types::Integer>>:
+            crate::methods::ExecuteDsl<Self>,
+        diesel::query_builder::SqlQuery: crate::methods::ExecuteDsl<Self>,
+    {
+        use crate::run_query_dsl::RunQueryDsl;
+        use diesel::IntoSql;
+
+        match config {
+            RecyclingMethod::Fast => Ok(()),
+            RecyclingMethod::Verified => {
+                diesel::select(1_i32.into_sql::<diesel::sql_types::Integer>())
+                    .first(self)
+                    .await
+                    .map(|_: i32| ())
+            }
+            RecyclingMethod::CustomQuery(query) => diesel::sql_query(query.as_ref())
+                .execute(self)
+                .await
+                .map(|_| ()),
+            RecyclingMethod::CustomFunction(c) => c(self).await,
+        }
+    }
+}
 
 #[cfg(test)]
 mod tests {
